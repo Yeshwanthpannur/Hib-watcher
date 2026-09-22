@@ -1,0 +1,36 @@
+name: H-1B slot watcher
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"   # every 15 min (GitHub may run it a few min late)
+  workflow_dispatch:          # lets you tap "Run workflow" to test
+
+permissions:
+  contents: write             # needed to save slot_state.json
+
+concurrency:
+  group: slot-watcher
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install requests beautifulsoup4
+      - name: Check for slots
+        env:
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          ALERT_IF_BEFORE: "2027-06-30"                  # only alert for dates before this
+          APPOINTMENT_TYPES: "interview,biometrics,dropbox"
+        run: python watcher.py
+      - name: Save state
+        run: |
+          git config user.name "slot-watcher"
+          git config user.email "slot-watcher@users.noreply.github.com"
+          git add slot_state.json
+          git diff --cached --quiet || (git commit -m "Update slot state" && git push)
